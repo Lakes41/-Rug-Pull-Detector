@@ -1,9 +1,11 @@
-import { analyzeDynamicHoneypotSignals } from './honeypotDetector';
+import { analyzeDynamicHoneypotSignals } from "./honeypotDetector";
+import { analyzeOracleManipulationRisk } from "./oracleManipulationDetector";
 
-const BACKEND_API_BASE_URL = process.env.BACKEND_API_BASE_URL || 'http://127.0.0.1:8080';
+const BACKEND_API_BASE_URL =
+  process.env.BACKEND_API_BASE_URL || "http://127.0.0.1:8080";
 
 function toNumber(value) {
-  if (value === '' || value === null || value === undefined) {
+  if (value === "" || value === null || value === undefined) {
     return null;
   }
 
@@ -18,7 +20,9 @@ export function buildAnalyzePayload(input) {
     creator_balance: toNumber(input.creatorBalance),
     locked_liquidity: toNumber(input.lockedLiquidity),
     total_liquidity: toNumber(input.totalLiquidity),
-    is_potential_honeypot: input.isPotentialHoneypot === true || input.isPotentialHoneypot === 'true',
+    is_potential_honeypot:
+      input.isPotentialHoneypot === true ||
+      input.isPotentialHoneypot === "true",
     chain_id: input.chainId || null,
     normalized_chain_data: input.normalizedChainData || null,
   };
@@ -30,23 +34,48 @@ export function isValidAnalyzePayload(payload) {
       payload.total_supply !== null &&
       payload.creator_balance !== null &&
       payload.locked_liquidity !== null &&
-      payload.total_liquidity !== null
+      payload.total_liquidity !== null,
   );
 }
 
 export function normalizeAnalysisResult(payload, apiData) {
   const chainData = payload.normalized_chain_data || {};
   const detector = analyzeDynamicHoneypotSignals(chainData);
-  const backendScore = typeof apiData?.score === 'number' ? apiData.score : 0;
-  const score = Math.max(backendScore, detector.score);
+  const oracleManipulation = analyzeOracleManipulationRisk(chainData);
+  const backendScore = typeof apiData?.score === "number" ? apiData.score : 0;
+  const score = Math.max(
+    backendScore,
+    detector.score,
+    oracleManipulation.score,
+  );
   const backendRiskLevel = apiData?.riskLevel || apiData?.risk_level || null;
-  const riskLevel = detector.flagged && score >= 0.8 ? 'Critical' : detector.flagged ? 'High' : backendRiskLevel || 'Low';
+
+  // Determine risk level incorporating oracle manipulation findings
+  let riskLevel;
+  if (detector.flagged && score >= 0.8) {
+    riskLevel = "Critical";
+  } else if (detector.flagged) {
+    riskLevel = "High";
+  } else if (
+    oracleManipulation.flagged &&
+    oracleManipulation.severity === "critical"
+  ) {
+    riskLevel = "Critical";
+  } else if (
+    oracleManipulation.flagged &&
+    oracleManipulation.severity === "high"
+  ) {
+    riskLevel = "High";
+  } else {
+    riskLevel = backendRiskLevel || "Low";
+  }
 
   return {
     ...apiData,
     tokenAddress: payload.token_address,
     chainId: payload.chain_id,
     detector,
+    oracleManipulation,
     components: {
       creatorOwnership: apiData?.components?.creatorOwnership ?? 0,
       liquidityLock: apiData?.components?.liquidityLock ?? 0,
@@ -54,6 +83,7 @@ export function normalizeAnalysisResult(payload, apiData) {
       gasDelta: detector.score,
       dynamicTax: detector.dynamicTax.flagged ? 1 : 0,
       conditionalReverts: detector.conditionalReverts.flagged ? 1 : 0,
+      oracleManipulation: oracleManipulation.score,
     },
     riskLevel,
     score,
@@ -79,17 +109,19 @@ export function buildReportHref(input) {
     ...(input.chainId ? { chainId: String(input.chainId) } : {}),
   });
 
-  return `/reports/${encodeURIComponent(input.tokenAddress)}?${params.toString()}`;
+  return `/reports/${encodeURIComponent(
+    input.tokenAddress,
+  )}?${params.toString()}`;
 }
 
 export async function fetchTokenAnalysis(payload) {
   const response = await fetch(`${BACKEND_API_BASE_URL}/api/analyze`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
-    cache: 'no-store',
+    cache: "no-store",
   });
 
   if (!response.ok) {
