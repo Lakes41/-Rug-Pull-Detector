@@ -103,6 +103,57 @@ npm run build
 - `POST /api/batch-analyze` - Analyze multiple tokens
 - `GET /health` - Health check
 
+## Real-Time WebSocket Alerts
+
+The system includes a WebSocket server for real-time anomaly alerts.
+
+### Starting the WebSocket Server
+
+**Locally (requires Rust):**
+```bash
+cd websocket-server
+cargo run
+```
+
+**With Docker:**
+```bash
+docker compose up websocket-server
+```
+
+The WebSocket server runs on `ws://127.0.0.1:8080`
+
+### WebSocket Features
+
+- **Pub/Sub Mechanism**: Subscribe to specific smart contract addresses
+- **Real-time Alerts**: Receive alerts within 500ms of anomaly detection
+- **Alert Types**: Liquidity drops, holder concentration, honeypot detection, mintable tokens, large transfers
+- **Auto-reconnection**: Frontend client automatically reconnects on disconnect
+
+### Frontend Integration
+
+The React frontend includes a real-time alert panel:
+- Click the bell icon in the top-right corner to open the alert panel
+- Subscribe to token addresses to monitor them for anomalies
+- View connection status and received alerts in real-time
+
+### Backend Integration
+
+Python backend automatically triggers WebSocket alerts for high-risk tokens:
+```python
+from websocket_client import AlertTrigger, WebSocketAlertClient
+
+client = WebSocketAlertClient()
+await client.connect()
+trigger = AlertTrigger(client)
+
+await trigger.trigger_liquidity_drop_alert(
+    address="0xdeadbeef1234567890",
+    percentage=35.5,
+    previous_liquidity=100000.0,
+    current_liquidity=64500.0
+)
+```
+
 ## Tech Stack
 
 - React 18
@@ -110,4 +161,6 @@ npm run build
 - Lucide React (icons)
 - Axios (HTTP client)
 - Recharts (charts)
+- Rust (tokio-tungstenite) - WebSocket server
+- Python (websockets) - Backend alert client
 

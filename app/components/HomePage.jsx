@@ -5,6 +5,7 @@ import { Activity, Shield } from 'lucide-react';
 import { ChainSwitcher } from './ChainSwitcher';
 import TokenAnalyzer from './TokenAnalyzer';
 import RiskDashboard from './RiskDashboard';
+import RealTimeAlerts from './RealTimeAlerts';
 
 export default function HomePage() {
   const [analyzedTokens, setAnalyzedTokens] = useState([]);
@@ -15,6 +16,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen text-white">
+      <RealTimeAlerts />
       <header className="glass-card m-4 p-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">

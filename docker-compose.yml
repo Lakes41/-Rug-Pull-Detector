@@ -30,3 +30,13 @@ services:
     ports:
       - "3000:3000"
     command: npm test -- --watchAll=false
+
+  websocket-server:
+    build:
+      context: ./websocket-server
+      dockerfile: Dockerfile
+    container_name: rug-pull-websocket-server
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=info

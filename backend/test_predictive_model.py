@@ -3,6 +3,8 @@ Predictive Modeling Backend Test Suite for DeFi Rug Pull Detector
 """
 
 import pytest
+import asyncio
+from websocket_client import WebSocketAlertClient, AlertTrigger
 
 class RugPullPredictor:
     """Core predictive model logic for rug pull detection"""
@@ -39,13 +41,40 @@ class RugPullPredictor:
         else:
             risk_level = 'LOW'
 
-        return {
+        result = {
             'address': token_data.get('address', '0x000'),
             'score': final_score,
             'risk_level': risk_level,
             'is_honeypot': is_honeypot,
             'is_mintable': is_mintable
         }
+        
+        # Trigger WebSocket alerts for high-risk tokens
+        if final_score >= 0.70:
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(trigger_high_risk_alert(result))
+            except RuntimeError:
+                asyncio.run(trigger_high_risk_alert(result))
+        
+        return result
+
+
+async def trigger_high_risk_alert(token_result: dict):
+    """Trigger WebSocket alerts for high-risk tokens"""
+    try:
+        client = WebSocketAlertClient()
+        await client.connect()
+        trigger = AlertTrigger(client)
+        
+        if token_result['is_honeypot']:
+            await trigger.trigger_honeypot_alert(token_result['address'])
+        if token_result['is_mintable']:
+            await trigger.trigger_mintable_token_alert(token_result['address'])
+        
+        await client.disconnect()
+    except Exception as e:
+        print(f"Failed to send WebSocket alert: {e}")
 
 
 class DynamicHoneypotDetector:
