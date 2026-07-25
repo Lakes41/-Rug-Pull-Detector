@@ -14,13 +14,32 @@ mod types;
 use broadcast::AlertBroadcaster;
 use subscription::SubscriptionManager;
 use types::{Alert, ClientMessage, ServerMessage};
+use rug_pull_websocket_server::database::{create_pool, run_migrations};
+use rug_pull_websocket_server::risk_cache::RiskCache;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
+    // Load environment variables
+    dotenvy::dotenv().ok();
+
+    // Initialize database connection pool
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost/rug_pull_detector".to_string());
+    
+    let pool = create_pool(&database_url).await?;
+    info!("Connected to PostgreSQL database");
+
+    // Run database migrations
+    run_migrations(&pool).await?;
+    info!("Database migrations completed");
+
+    // Initialize risk cache with 15-minute cache window
+    let risk_cache = Arc::new(RiskCache::new(pool, 15));
+
     let subscription_manager = Arc::new(SubscriptionManager::new());
-    let alert_broadcaster = Arc::new(AlertBroadcaster::new(subscription_manager.clone()));
+    let alert_broadcaster = Arc::new(AlertBroadcaster::new(subscription_manager.clone(), risk_cache.clone()));
 
     let addr = "127.0.0.1:8080";
     let listener = tokio::net::TcpListener::bind(addr).await?;
