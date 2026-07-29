@@ -17,6 +17,8 @@ function TokenAnalyzer({ onAnalysisComplete }) {
     totalLiquidity: '',
     isPotentialHoneypot: null,
   });
+  const [poolType, setPoolType] = useState('standard');
+  const [isLendingPool, setIsLendingPool] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(false);
   const [error, setError] = useState('');
@@ -86,6 +88,8 @@ function TokenAnalyzer({ onAnalysisComplete }) {
           isPotentialHoneypot: inputs.isPotentialHoneypot,
           chainId: activeChainId,
           normalizedChainData: autoFetched?.rawChainData || null,
+          isLendingPool,
+          poolType,
         }),
       });
       const payload = await response.json();
@@ -279,6 +283,44 @@ function TokenAnalyzer({ onAnalysisComplete }) {
           <label htmlFor="honeypot" className="text-sm text-gray-300">
             Potential Honeypot Detected
           </label>
+        </div>
+
+        {/* Lending Pool Detection */}
+        <div className="space-y-3 p-4 bg-white/5 border border-white/10 rounded-lg">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="isLendingPool"
+              checked={isLendingPool}
+              onChange={(e) => setIsLendingPool(e.target.checked)}
+              className="w-5 h-5 rounded bg-white/5 border-white/10 text-primary-500 focus:ring-primary-500"
+            />
+            <label htmlFor="isLendingPool" className="text-sm font-medium text-gray-300">
+              This is a Lending Pool
+            </label>
+          </div>
+
+          {isLendingPool && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Pool Type
+              </label>
+              <select
+                value={poolType}
+                onChange={(e) => setPoolType(e.target.value)}
+                className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-white"
+              >
+                <option value="standard">Standard Lending</option>
+                <option value="liquidity">Liquidity Pool</option>
+                <option value="stable">Stable Pool</option>
+                <option value="yield">Yield Pool</option>
+                <option value="rwa">RWA Tokenized</option>
+              </select>
+              <p className="mt-2 text-xs text-gray-400">
+                Enables specialized risk scoring for lending pools including TVL tracking, collateral withdrawal detection, and oracle manipulation monitoring.
+              </p>
+            </div>
+          )}
         </div>
 
         <button
