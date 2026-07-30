@@ -14,8 +14,14 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool> {
 }
 
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
-    sqlx::query_file!("migrations/0001_initial.sql")
-        .execute(pool)
-        .await?;
+    let migration_sql = include_str!("../migrations/0001_initial.sql");
+    for statement in migration_sql.split(';') {
+        let trimmed = statement.trim();
+        if !trimmed.is_empty() {
+            sqlx::query(trimmed)
+                .execute(pool)
+                .await?;
+        }
+    }
     Ok(())
 }

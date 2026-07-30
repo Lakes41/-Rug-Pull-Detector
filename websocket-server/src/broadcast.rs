@@ -1,6 +1,6 @@
 use crate::subscription::SubscriptionManager;
 use crate::types::Alert;
-use crate::risk_cache::RiskCache;
+use rug_pull_websocket_server::risk_cache::{RiskCache, RiskScore};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::info;
@@ -47,7 +47,7 @@ impl AlertBroadcaster {
     }
 
     /// Check if a cached risk score exists for the given address
-    pub async fn get_cached_risk_score(&self, address: &str) -> Option<crate::risk_cache::RiskScore> {
+    pub async fn get_cached_risk_score(&self, address: &str) -> Option<RiskScore> {
         self.risk_cache.get_cached_risk_score(address).await.ok().flatten()
     }
 
