@@ -463,6 +463,92 @@ export class StellarAdapter extends BaseChainAdapter {
 
     return issuerOwnershipRatio > 0.8 || hasNoDistribution || Boolean(hasNoContractActivity);
   }
+
+  /**
+   * Analyze Soroban contract authorization risks
+   * @param {string} contractId - Soroban contract ID (starts with C...)
+   * @param {string} transactionHash - Optional transaction hash to analyze
+   */
+  async analyzeSorobanAuthorization(contractId, transactionHash = null) {
+    try {
+      // Call backend API for Soroban authorization analysis
+      const response = await fetch('/api/soroban-auth-analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractId,
+          transactionHash,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Soroban auth analysis failed with status ${response.status}`);
+      }
+
+      const result = await response.json();
+      return {
+        success: true,
+        contractId,
+        riskScore: result.riskScore || 0,
+        riskLevel: result.riskLevel || 'UNKNOWN',
+        riskVectors: result.riskVectors || [],
+        executionGraph: result.executionGraph || null,
+        report: result.report || null,
+      };
+    } catch (error) {
+      console.error('Error analyzing Soroban authorization:', error);
+      return {
+        success: false,
+        contractId,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Enhanced risk analysis for Soroban contracts including authorization checks
+   * @param {string} assetString - Asset string for Soroban contract
+   */
+  async analyzeSorobanContractRisk(assetString) {
+    const asset = this.parseAssetString(assetString);
+
+    if (!asset.isSorobanContract) {
+      throw new Error('Asset is not a Soroban contract');
+    }
+
+    // Get basic token data
+    const tokenData = await this.getTokenData(assetString);
+    const contractData = await this.getSorobanContractData(asset.contractId);
+
+    // Perform authorization analysis
+    const authAnalysis = await this.analyzeSorobanAuthorization(asset.contractId);
+
+    // Combine risks
+    const baseRisk = await this.analyzeRiskForToken(assetString);
+    const authRiskScore = authAnalysis.success ? authAnalysis.riskScore : 0;
+
+    // Calculate combined risk score
+    const combinedRiskScore = Math.max(
+      baseRisk.isPotentialHoneypot ? 0.8 : 0.3,
+      authRiskScore
+    );
+
+    return {
+      ...baseRisk,
+      authAnalysis,
+      combinedRiskScore,
+      riskLevel: this._getRiskLevelFromScore(combinedRiskScore),
+    };
+  }
+
+  _getRiskLevelFromScore(score) {
+    if (score >= 0.8) return 'CRITICAL';
+    if (score >= 0.6) return 'HIGH';
+    if (score >= 0.4) return 'MEDIUM';
+    return 'LOW';
+  }
 }
 
 export const stellarAdapter = new StellarAdapter();
