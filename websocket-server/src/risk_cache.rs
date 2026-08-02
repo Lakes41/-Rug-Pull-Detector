@@ -8,7 +8,7 @@ pub struct RiskScore {
     pub address: String,
     pub risk_score: f64,
     pub risk_level: String,
-    pub risk_factors: Vec<String>,
+    pub risk_factors: sqlx::types::Json<Vec<String>>,
     pub last_updated: DateTime<Utc>,
 }
 
@@ -32,7 +32,7 @@ impl RiskCache {
         let row = sqlx::query_as!(
             RiskScore,
             r#"
-            SELECT address, risk_score, risk_level, risk_factors, last_updated
+            SELECT address, risk_score, risk_level, risk_factors as "risk_factors: sqlx::types::Json<Vec<String>>", last_updated
             FROM risk_scores
             WHERE address = $1 AND last_updated > $2
             "#,
@@ -54,6 +54,7 @@ impl RiskCache {
         risk_factors: &[String],
     ) -> Result<()> {
         let now = Utc::now();
+        let risk_factors_json = sqlx::types::Json(risk_factors.to_vec());
 
         sqlx::query!(
             r#"
@@ -69,7 +70,7 @@ impl RiskCache {
             address.to_lowercase(),
             risk_score,
             risk_level,
-            risk_factors,
+            risk_factors_json as _,
             now
         )
         .execute(&self.pool)
@@ -85,7 +86,7 @@ impl RiskCache {
         let rows = sqlx::query_as!(
             RiskScore,
             r#"
-            SELECT address, risk_score, risk_level, risk_factors, last_updated
+            SELECT address, risk_score, risk_level, risk_factors as "risk_factors: sqlx::types::Json<Vec<String>>", last_updated
             FROM risk_scores
             WHERE last_updated > $1
             ORDER BY last_updated DESC

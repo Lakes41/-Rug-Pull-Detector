@@ -1,7 +1,5 @@
-use chrono::{Duration, Utc};
 use rug_pull_websocket_server::database::{create_pool, run_migrations};
 use rug_pull_websocket_server::risk_cache::RiskCache;
-use sqlx::PgPool;
 
 #[tokio::test]
 async fn test_cache_and_retrieve_risk_score() {
@@ -11,6 +9,10 @@ async fn test_cache_and_retrieve_risk_score() {
 
     let pool = create_pool(&database_url).await.expect("Failed to create pool");
     run_migrations(&pool).await.expect("Failed to run migrations");
+    sqlx::query("TRUNCATE TABLE risk_scores CASCADE")
+        .execute(&pool)
+        .await
+        .expect("Failed to truncate table");
 
     let risk_cache = RiskCache::new(pool, 15);
 
@@ -36,7 +38,7 @@ async fn test_cache_and_retrieve_risk_score() {
     assert_eq!(cached.address, address.to_lowercase());
     assert_eq!(cached.risk_score, risk_score);
     assert_eq!(cached.risk_level, risk_level);
-    assert_eq!(cached.risk_factors, risk_factors);
+    assert_eq!(cached.risk_factors.0, risk_factors);
 }
 
 #[tokio::test]
@@ -46,6 +48,10 @@ async fn test_cache_expiration() {
 
     let pool = create_pool(&database_url).await.expect("Failed to create pool");
     run_migrations(&pool).await.expect("Failed to run migrations");
+    sqlx::query("TRUNCATE TABLE risk_scores CASCADE")
+        .execute(&pool)
+        .await
+        .expect("Failed to truncate table");
 
     // Use a very short cache duration for testing
     let risk_cache = RiskCache::new(pool, 0); // 0 minutes = immediate expiration
@@ -76,6 +82,10 @@ async fn test_cache_update() {
 
     let pool = create_pool(&database_url).await.expect("Failed to create pool");
     run_migrations(&pool).await.expect("Failed to run migrations");
+    sqlx::query("TRUNCATE TABLE risk_scores CASCADE")
+        .execute(&pool)
+        .await
+        .expect("Failed to truncate table");
 
     let risk_cache = RiskCache::new(pool, 15);
 
@@ -107,7 +117,7 @@ async fn test_cache_update() {
     let cached = cached.unwrap();
     assert_eq!(cached.risk_score, updated_risk_score);
     assert_eq!(cached.risk_level, updated_risk_level);
-    assert_eq!(cached.risk_factors, updated_risk_factors);
+    assert_eq!(cached.risk_factors.0, updated_risk_factors);
 }
 
 #[tokio::test]
@@ -117,6 +127,10 @@ async fn test_cleanup_expired_entries() {
 
     let pool = create_pool(&database_url).await.expect("Failed to create pool");
     run_migrations(&pool).await.expect("Failed to run migrations");
+    sqlx::query("TRUNCATE TABLE risk_scores CASCADE")
+        .execute(&pool)
+        .await
+        .expect("Failed to truncate table");
 
     let risk_cache = RiskCache::new(pool, 0); // Immediate expiration for testing
 

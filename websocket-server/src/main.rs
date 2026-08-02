@@ -1,11 +1,10 @@
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{error, info, warn};
 use uuid::Uuid;
+use tracing_subscriber::prelude::*;
 
 mod broadcast;
 mod subscription;
@@ -16,10 +15,21 @@ use subscription::SubscriptionManager;
 use types::{Alert, ClientMessage, ServerMessage};
 use rug_pull_websocket_server::database::{create_pool, run_migrations};
 use rug_pull_websocket_server::risk_cache::RiskCache;
+use rug_pull_websocket_server::cpu_pool::CpuPool;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    // Initialize telemetry with tokio-console support
+    let console_layer = console_subscriber::ConsoleLayer::builder()
+        .with_default_env()
+        .spawn();
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_filter(tracing_subscriber::EnvFilter::from_default_env());
+
+    tracing_subscriber::registry()
+        .with(console_layer)
+        .with(fmt_layer)
+        .init();
 
     // Load environment variables
     dotenvy::dotenv().ok();
@@ -38,6 +48,12 @@ async fn main() -> Result<()> {
     // Initialize risk cache with 15-minute cache window
     let risk_cache = Arc::new(RiskCache::new(pool, 15));
 
+    // Initialize Rayon CPU thread pool
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let cpu_pool = Arc::new(CpuPool::new(threads));
+
     let subscription_manager = Arc::new(SubscriptionManager::new());
     let alert_broadcaster = Arc::new(AlertBroadcaster::new(subscription_manager.clone(), risk_cache.clone()));
 
@@ -46,11 +62,15 @@ async fn main() -> Result<()> {
     info!("WebSocket server listening on {}", addr);
 
     // Spawn alert broadcaster task
-    tokio::spawn(alert_broadcaster.run_broadcast_loop());
+    let alert_broadcaster_clone = alert_broadcaster.clone();
+    tokio::spawn(async move {
+        alert_broadcaster_clone.run_broadcast_loop().await;
+    });
 
     while let Ok((stream, addr)) = listener.accept().await {
         let subscription_manager = subscription_manager.clone();
         let alert_broadcaster = alert_broadcaster.clone();
+        let cpu_pool = cpu_pool.clone();
 
         tokio::spawn(async move {
             let client_id = Uuid::new_v4();
@@ -72,7 +92,12 @@ async fn main() -> Result<()> {
                 while let Some(msg) = read.next().await {
                     match msg {
                         Ok(Message::Text(text)) => {
-                            if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
+                            let cpu_pool = cpu_pool.clone();
+                            let parse_res = cpu_pool.spawn(move || {
+                                serde_json::from_str::<ClientMessage>(&text)
+                            }).await;
+
+                            if let Ok(Ok(client_msg)) = parse_res {
                                 match client_msg {
                                     ClientMessage::Subscribe { address } => {
                                         subscription_manager
