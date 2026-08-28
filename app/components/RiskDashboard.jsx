@@ -6,6 +6,7 @@ import {
   XCircle,
   Clock,
   Eye,
+  Settings,
 } from "lucide-react";
 import ZKPrivacyDisclosure from "./ZKPrivacyDisclosure";
 
@@ -183,6 +184,21 @@ function RiskDashboard({ analyzedTokens }) {
                   <span className="text-xs text-primary-300">
                     Zero-Knowledge Privacy Layer Detected
                   </span>
+                </div>
+              )}
+
+              {/* Proxy Pattern Indicator */}
+              {token.isProxy && (
+                <div className="mt-3 p-2 bg-orange-500/10 border border-orange-500/30 rounded-lg flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-orange-400" />
+                  <span className="text-xs text-orange-300">
+                    Proxy Pattern Detected ({token.proxyType?.toUpperCase() || 'UNKNOWN'})
+                  </span>
+                  {token.proxyRiskMultiplier > 1.0 && (
+                    <span className="text-xs text-orange-400 font-medium">
+                      {token.proxyRiskMultiplier.toFixed(1)}x Risk
+                    </span>
+                  )}
                 </div>
               )}
             </div>
