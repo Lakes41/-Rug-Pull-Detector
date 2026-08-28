@@ -8,10 +8,11 @@ import json
 from typing import Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
+import asyncio
+from circuit_breaker import get_rpc_circuit_breaker, CircuitBreakerOpenError
 
 try:
     from web3 import Web3
-    from eth_abi import decode
     WEB3_AVAILABLE = True
 except ImportError:
     WEB3_AVAILABLE = False
@@ -131,18 +132,27 @@ PROXY_STORAGE_SLOTS = {
 
 
 class ProxyStorageResolver:
-    """Resolves proxy storage slots to extract implementation addresses"""
+    """Resolves proxy storage slots to extract implementation addresses with circuit breaker protection"""
     
-    def __init__(self, web3: Optional[Web3] = None):
+    def __init__(self, web3: Optional[Web3] = None, rpc_url: Optional[str] = None):
         if not WEB3_AVAILABLE:
             self.web3 = MockWeb3()
+            self.circuit_breaker = None
         else:
             self.web3 = web3 or Web3()
+            self.rpc_url = rpc_url
+            self.circuit_breaker = None
         self.detected_proxies: Dict[str, ImplementationInfo] = {}
     
-    def resolve_storage_slot(self, contract_address: str, storage_slot: ProxyStorageSlot) -> Optional[str]:
+    async def _get_circuit_breaker(self):
+        """Get or create circuit breaker for RPC URL"""
+        if self.circuit_breaker is None and self.rpc_url:
+            self.circuit_breaker = await get_rpc_circuit_breaker(self.rpc_url)
+        return self.circuit_breaker
+    
+    async def resolve_storage_slot(self, contract_address: str, storage_slot: ProxyStorageSlot) -> Optional[str]:
         """
-        Read a storage slot to extract implementation address
+        Read a storage slot to extract implementation address with circuit breaker protection
         
         Args:
             contract_address: Proxy contract address
@@ -151,7 +161,7 @@ class ProxyStorageResolver:
         Returns:
             Implementation address or None if not found
         """
-        try:
+        async def make_request():
             # Convert slot address to integer
             slot_int = int(storage_slot.slot_address, 16)
             
@@ -172,11 +182,23 @@ class ProxyStorageResolver:
                     return implementation_address
             
             return None
+        
+        try:
+            # Use circuit breaker if available
+            breaker = await self._get_circuit_breaker()
+            if breaker:
+                return await breaker.call(make_request)
+            else:
+                # Fallback to direct call if no circuit breaker
+                return make_request()
+        except CircuitBreakerOpenError as e:
+            print(f"Circuit breaker open for RPC when resolving storage slot {storage_slot.name}: {e}")
+            return None
         except Exception as e:
             print(f"Error resolving storage slot {storage_slot.name}: {e}")
             return None
     
-    def detect_proxy_type(self, contract_address: str) -> Tuple[Optional[ProxyType], Optional[str]]:
+    async def detect_proxy_type(self, contract_address: str) -> Tuple[Optional[ProxyType], Optional[str]]:
         """
         Detect proxy type and extract implementation address
         
@@ -188,25 +210,25 @@ class ProxyStorageResolver:
         """
         # Try EIP-1967 slots first (most common)
         for storage_slot in PROXY_STORAGE_SLOTS[ProxyType.EIP_1967]:
-            implementation = self.resolve_storage_slot(contract_address, storage_slot)
+            implementation = await self.resolve_storage_slot(contract_address, storage_slot)
             if implementation:
                 return ProxyType.EIP_1967, implementation
         
         # Try EIP-897 slots
         for storage_slot in PROXY_STORAGE_SLOTS[ProxyType.EIP_897]:
-            implementation = self.resolve_storage_slot(contract_address, storage_slot)
+            implementation = await self.resolve_storage_slot(contract_address, storage_slot)
             if implementation:
                 return ProxyType.EIP_897, implementation
         
         # Try Beacon slots
         for storage_slot in PROXY_STORAGE_SLOTS[ProxyType.BEACON]:
-            implementation = self.resolve_storage_slot(contract_address, storage_slot)
+            implementation = await self.resolve_storage_slot(contract_address, storage_slot)
             if implementation:
                 return ProxyType.BEACON, implementation
         
         return ProxyType.UNKNOWN, None
     
-    def get_admin_address(self, contract_address: str) -> Optional[str]:
+    async def get_admin_address(self, contract_address: str) -> Optional[str]:
         """
         Extract admin address from EIP-1967 admin slot
         
@@ -217,7 +239,7 @@ class ProxyStorageResolver:
             Admin address or None
         """
         admin_slot = PROXY_STORAGE_SLOTS[ProxyType.EIP_1967][2]  # EIP_1967_ADMIN
-        return self.resolve_storage_slot(contract_address, admin_slot)
+        return await self.resolve_storage_slot(contract_address, admin_slot)
 
 
 class TimelockGovernanceVerifier:
@@ -330,7 +352,7 @@ class TimelockGovernanceVerifier:
 
 
 class ProxyPatternAnalyzer:
-    """Main analyzer for proxy pattern risks"""
+    """Main analyzer for proxy pattern risks with circuit breaker protection"""
     
     def __init__(self, web3: Optional[Web3] = None, rpc_url: Optional[str] = None):
         if not WEB3_AVAILABLE:
@@ -340,12 +362,13 @@ class ProxyPatternAnalyzer:
         else:
             self.web3 = web3 or Web3()
         
-        self.storage_resolver = ProxyStorageResolver(self.web3)
+        self.rpc_url = rpc_url
+        self.storage_resolver = ProxyStorageResolver(self.web3, rpc_url)
         self.timelock_verifier = TimelockGovernanceVerifier(self.web3)
         self.detected_risks: List[ProxyRisk] = []
         self.proxy_history: Dict[str, List[ImplementationInfo]] = {}
     
-    def analyze_proxy_contract(self, contract_address: str) -> Dict:
+    async def analyze_proxy_contract(self, contract_address: str) -> Dict:
         """
         Analyze a contract for proxy pattern risks
         
@@ -358,7 +381,7 @@ class ProxyPatternAnalyzer:
         self.detected_risks = []
         
         # Detect proxy type and implementation
-        proxy_type, implementation_address = self.storage_resolver.detect_proxy_type(contract_address)
+        proxy_type, implementation_address = await self.storage_resolver.detect_proxy_type(contract_address)
         
         if proxy_type == ProxyType.UNKNOWN:
             return {
@@ -371,7 +394,7 @@ class ProxyPatternAnalyzer:
             }
         
         # Get admin address
-        admin_address = self.storage_resolver.get_admin_address(contract_address)
+        admin_address = await self.storage_resolver.get_admin_address(contract_address)
         
         # Verify timelock governance
         timelock_info = self.timelock_verifier.verify_timelock(contract_address, admin_address)
@@ -531,7 +554,7 @@ class ProxyPatternAnalyzer:
         return unique_recommendations
 
 
-def analyze_proxy_contract(contract_address: str, rpc_url: Optional[str] = None) -> Dict:
+async def analyze_proxy_contract(contract_address: str, rpc_url: Optional[str] = None) -> Dict:
     """
     Convenience function to analyze a proxy contract
     
@@ -543,7 +566,7 @@ def analyze_proxy_contract(contract_address: str, rpc_url: Optional[str] = None)
         Analysis results
     """
     analyzer = ProxyPatternAnalyzer(rpc_url=rpc_url)
-    return analyzer.analyze_proxy_contract(contract_address)
+    return await analyzer.analyze_proxy_contract(contract_address)
 
 
 if __name__ == "__main__":

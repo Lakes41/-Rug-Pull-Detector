@@ -7,17 +7,21 @@ import asyncio
 import aiohttp
 from typing import Dict, List, Optional
 from soroban_auth_analyzer import SorobanAuthAnalyzer, analyze_soroban_contract
+from circuit_breaker import get_rpc_circuit_breaker, CircuitBreakerOpenError
 
 
 class SorobanRPCClient:
-    """Client for interacting with Soroban RPC endpoints"""
+    """Client for interacting with Soroban RPC endpoints with circuit breaker protection"""
     
     def __init__(self, rpc_url: str = "https://soroban-rpc.stellar.org"):
         self.rpc_url = rpc_url
         self.session: Optional[aiohttp.ClientSession] = None
+        self.circuit_breaker = None
     
     async def __aenter__(self):
         self.session = aiohttp.ClientSession()
+        # Initialize circuit breaker for this RPC URL
+        self.circuit_breaker = await get_rpc_circuit_breaker(self.rpc_url)
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -26,7 +30,7 @@ class SorobanRPCClient:
     
     async def rpc_request(self, method: str, params: Dict = None) -> Dict:
         """
-        Make a JSON-RPC request to Soroban
+        Make a JSON-RPC request to Soroban with circuit breaker protection
         
         Args:
             method: RPC method name
@@ -34,31 +38,43 @@ class SorobanRPCClient:
             
         Returns:
             RPC response result
+            
+        Raises:
+            CircuitBreakerOpenError: If circuit breaker is open
+            Exception: If RPC request fails
         """
         if not self.session:
             raise RuntimeError("SorobanRPCClient must be used as async context manager")
         
-        payload = {
-            "jsonrpc": "2.0",
-            "id": f"{method}-{asyncio.get_event_loop().time()}",
-            "method": method,
-            "params": params or {}
-        }
+        async def make_request():
+            payload = {
+                "jsonrpc": "2.0",
+                "id": f"{method}-{asyncio.get_event_loop().time()}",
+                "method": method,
+                "params": params or {}
+            }
+            
+            async with self.session.post(
+                self.rpc_url,
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            ) as response:
+                if not response.ok:
+                    raise Exception(f"RPC request failed: {response.status}")
+                
+                data = await response.json()
+                
+                if "error" in data:
+                    raise Exception(f"RPC error: {data['error']}")
+                
+                return data.get("result", {})
         
-        async with self.session.post(
-            self.rpc_url,
-            json=payload,
-            headers={"Content-Type": "application/json"}
-        ) as response:
-            if not response.ok:
-                raise Exception(f"RPC request failed: {response.status}")
-            
-            data = await response.json()
-            
-            if "error" in data:
-                raise Exception(f"RPC error: {data['error']}")
-            
-            return data.get("result", {})
+        # Execute request through circuit breaker
+        try:
+            return await self.circuit_breaker.call(make_request)
+        except CircuitBreakerOpenError as e:
+            # Return a graceful error response when circuit is open
+            raise Exception(f"RPC service temporarily unavailable due to failures. Retry after {e.retry_after} seconds") from e
     
     async def get_transaction(self, tx_hash: str) -> Dict:
         """Get transaction details by hash"""

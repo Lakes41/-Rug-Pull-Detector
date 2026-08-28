@@ -12,9 +12,16 @@ from zk_verification_analyzer import (
     ShieldedPoolInfo,
     analyze_zk_contract
 )
+from rate_limiter import RateLimiter, RateLimitMiddleware
 
 
 app = FastAPI(title="Zero-Knowledge Verification Analysis API")
+
+# Initialize rate limiter: 10 requests per second, 100 burst capacity
+rate_limiter = RateLimiter(rate=10.0, capacity=100)
+
+# Add rate limiting middleware
+app.add_middleware(RateLimitMiddleware, rate_limiter=rate_limiter)
 
 
 class ShieldedPoolInfoRequest(BaseModel):
