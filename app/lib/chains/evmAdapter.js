@@ -5,6 +5,7 @@ import {
   NormalizedAccountData,
   CHAIN_IDS,
 } from './types';
+import { analyzeHoneypotWithSimulation } from '../honeypotDetector.js';
 
 // EVM Adapter - wraps existing EVM functionality into the adapter interface
 export class EVMAdapter extends BaseChainAdapter {
@@ -69,10 +70,22 @@ export class EVMAdapter extends BaseChainAdapter {
 
     const inputs = { ...defaults, ...overrides };
 
+    // Run enhanced honeypot analysis with fork simulation
+    const enhancedAnalysis = await analyzeHoneypotWithSimulation(
+      inputs.rawChainData || {},
+      tokenAddress,
+      overrides.routerAddress
+    );
+
     return new NormalizedRiskInput({
       ...inputs,
       chainId: this.chainId,
-      rawChainData: {},
+      rawChainData: {
+        ...inputs.rawChainData,
+        enhancedAnalysis,
+      },
+      isPotentialHoneypot: enhancedAnalysis.flagged,
+      honeypotScore: enhancedAnalysis.score,
     });
   }
 }
