@@ -1,3 +1,5 @@
+import ForkSimulationEngine from './forkSimulationEngine.js';
+
 const TRADE_OPERATIONS = ['approve', 'transfer', 'swapexacttokensforeth'];
 const HIGH_TAX_BPS = 9000;
 const DYNAMIC_TAX_DELTA_BPS = 5000;
@@ -270,4 +272,90 @@ export function analyzeDynamicHoneypotSignals(chainData = {}) {
     dynamicTax: taxAnalysis,
     conditionalReverts: revertAnalysis,
   };
+}
+
+/**
+ * Run fork-based simulation to detect complex honeypots
+ * This complements static analysis by executing actual transactions
+ */
+export async function runForkSimulation(tokenAddress, routerAddress = null) {
+  const engine = new ForkSimulationEngine();
+  
+  try {
+    const result = await engine.runBuySellSimulation(tokenAddress, routerAddress);
+    await engine.cleanup();
+    
+    return {
+      success: result.success,
+      simulation: result,
+      // Add simulation-based risk factors
+      isHoneypot: result.analysis?.isHoneypot || false,
+      riskFactors: result.analysis?.riskFactors || [],
+      slippage: result.analysis?.slippage || 0,
+      gasAnomaly: result.analysis?.gasAnomaly || false,
+    };
+  } catch (error) {
+    await engine.cleanup();
+    return {
+      success: false,
+      error: error.message,
+      isHoneypot: false,
+      riskFactors: ['simulation_error'],
+    };
+  }
+}
+
+/**
+ * Enhanced honeypot analysis combining static and simulation-based detection
+ */
+export async function analyzeHoneypotWithSimulation(chainData = {}, tokenAddress = null, routerAddress = null) {
+  // Run static analysis
+  const staticAnalysis = analyzeDynamicHoneypotSignals(chainData);
+  
+  // Run fork simulation if token address is provided
+  let simulationAnalysis = null;
+  if (tokenAddress) {
+    simulationAnalysis = await runForkSimulation(tokenAddress, routerAddress);
+  }
+  
+  // Combine results
+  const combinedScore = calculateCombinedScore(staticAnalysis, simulationAnalysis);
+  const combinedTriggeredRules = [
+    ...staticAnalysis.triggeredRules,
+    ...(simulationAnalysis?.riskFactors || []),
+  ];
+  
+  return {
+    score: combinedScore,
+    flagged: combinedScore >= 0.4 || simulationAnalysis?.isHoneypot,
+    triggeredRules: combinedTriggeredRules,
+    staticAnalysis,
+    simulationAnalysis,
+  };
+}
+
+/**
+ * Calculate combined risk score from static and simulation analysis
+ */
+function calculateCombinedScore(staticAnalysis, simulationAnalysis) {
+  let score = staticAnalysis.score;
+  
+  // Add weight for simulation-based findings
+  if (simulationAnalysis?.isHoneypot) {
+    score += 0.4; // High weight for confirmed honeypot behavior
+  }
+  
+  if (simulationAnalysis?.riskFactors?.includes('excessive_slippage')) {
+    score += 0.2;
+  }
+  
+  if (simulationAnalysis?.riskFactors?.includes('sell_transaction_failed')) {
+    score += 0.3;
+  }
+  
+  if (simulationAnalysis?.gasAnomaly) {
+    score += 0.15;
+  }
+  
+  return Math.min(Number(score.toFixed(2)), 1);
 }
