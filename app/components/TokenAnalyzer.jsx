@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Search, Loader2, AlertCircle, RefreshCw, Shield } from 'lucide-react';
+import { Search, Loader2, AlertCircle, RefreshCw, Shield, Settings } from 'lucide-react';
 import { useChain } from '../context/ChainProvider';
 import { buildReportHref } from '../lib/report';
 import ZKPrivacyDisclosure from './ZKPrivacyDisclosure';
+import ProxyPatternDisclosure from './ProxyPatternDisclosure';
 
 function TokenAnalyzer({ onAnalysisComplete }) {
   const { activeAdapter, activeChainId } = useChain();
@@ -25,6 +26,8 @@ function TokenAnalyzer({ onAnalysisComplete }) {
   const [error, setError] = useState('');
   const [zkAnalysisResult, setZkAnalysisResult] = useState(null);
   const [analyzingZK, setAnalyzingZK] = useState(false);
+  const [proxyAnalysisResult, setProxyAnalysisResult] = useState(null);
+  const [analyzingProxy, setAnalyzingProxy] = useState(false);
 
   // Helper: Get the final inputs, combining auto-fetched data with overrides
   const getFinalInputs = useCallback(() => {
@@ -122,6 +125,7 @@ function TokenAnalyzer({ onAnalysisComplete }) {
           isPotentialHoneypot: null,
         });
         setZkAnalysisResult(null);
+        setProxyAnalysisResult(null);
       } else {
         setError(payload.error || 'Analysis failed');
       }
@@ -175,6 +179,37 @@ function TokenAnalyzer({ onAnalysisComplete }) {
       setError('Failed to analyze ZK verification: ' + err.message);
     } finally {
       setAnalyzingZK(false);
+    }
+  };
+
+  const handleProxyAnalysis = async () => {
+    if (!tokenAddress) return;
+    setAnalyzingProxy(true);
+    setError('');
+    
+    try {
+      const response = await fetch('/api/proxy-pattern-analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractAddress: tokenAddress,
+          rpcUrl: null // Would use default RPC in production
+        }),
+      });
+      
+      const payload = await response.json();
+      
+      if (response.ok) {
+        setProxyAnalysisResult(payload);
+      } else {
+        setError(payload.error || 'Proxy pattern analysis failed');
+      }
+    } catch (err) {
+      setError('Failed to analyze proxy pattern: ' + err.message);
+    } finally {
+      setAnalyzingProxy(false);
     }
   };
 
@@ -404,6 +439,48 @@ function TokenAnalyzer({ onAnalysisComplete }) {
             contractId={tokenAddress}
             zkAnalysisResult={zkAnalysisResult}
             onRefresh={handleZKAnalysis}
+          />
+        )}
+
+        {/* Proxy Pattern Analysis */}
+        <div className="space-y-3 p-4 bg-white/5 border border-white/10 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Settings className="w-5 h-5 text-primary-400" />
+              <span className="text-sm font-medium text-gray-300">
+                Proxy Pattern Analysis
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleProxyAnalysis}
+              disabled={!tokenAddress || analyzingProxy}
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-800 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+            >
+              {analyzingProxy ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Settings className="w-4 h-4" />
+                  Analyze Proxy
+                </>
+              )}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">
+            Analyze proxy contracts (EIP-1967, EIP-897, Beacon) for implementation changes and timelock governance.
+          </p>
+        </div>
+
+        {/* Proxy Pattern Disclosure Component */}
+        {proxyAnalysisResult && (
+          <ProxyPatternDisclosure
+            contractAddress={tokenAddress}
+            proxyAnalysisResult={proxyAnalysisResult}
+            onRefresh={handleProxyAnalysis}
           />
         )}
 
