@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Search, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Search, Loader2, AlertCircle, RefreshCw, Shield } from 'lucide-react';
 import { useChain } from '../context/ChainProvider';
 import { buildReportHref } from '../lib/report';
+import ZKPrivacyDisclosure from './ZKPrivacyDisclosure';
 
 function TokenAnalyzer({ onAnalysisComplete }) {
   const { activeAdapter, activeChainId } = useChain();
@@ -22,6 +23,8 @@ function TokenAnalyzer({ onAnalysisComplete }) {
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(false);
   const [error, setError] = useState('');
+  const [zkAnalysisResult, setZkAnalysisResult] = useState(null);
+  const [analyzingZK, setAnalyzingZK] = useState(false);
 
   // Helper: Get the final inputs, combining auto-fetched data with overrides
   const getFinalInputs = useCallback(() => {
@@ -118,6 +121,7 @@ function TokenAnalyzer({ onAnalysisComplete }) {
           totalLiquidity: '',
           isPotentialHoneypot: null,
         });
+        setZkAnalysisResult(null);
       } else {
         setError(payload.error || 'Analysis failed');
       }
@@ -134,6 +138,44 @@ function TokenAnalyzer({ onAnalysisComplete }) {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
+  };
+
+  const handleZKAnalysis = async () => {
+    if (!tokenAddress) return;
+    setAnalyzingZK(true);
+    setError('');
+    
+    try {
+      const response = await fetch('/api/zk-verification-analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractId: tokenAddress,
+          bytecode: null, // Would be fetched from blockchain in production
+          shieldedPoolInfo: {
+            contract_id: tokenAddress,
+            total_shielded: 0,
+            commitment_tree_depth: 0,
+            recent_proof_count: 0,
+            verification_enabled: true
+          }
+        }),
+      });
+      
+      const payload = await response.json();
+      
+      if (response.ok) {
+        setZkAnalysisResult(payload);
+      } else {
+        setError(payload.error || 'ZK analysis failed');
+      }
+    } catch (err) {
+      setError('Failed to analyze ZK verification: ' + err.message);
+    } finally {
+      setAnalyzingZK(false);
+    }
   };
 
   const getLabelForAddressField = () => {
@@ -322,6 +364,48 @@ function TokenAnalyzer({ onAnalysisComplete }) {
             </div>
           )}
         </div>
+
+        {/* ZK Privacy Analysis */}
+        <div className="space-y-3 p-4 bg-white/5 border border-white/10 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Shield className="w-5 h-5 text-primary-400" />
+              <span className="text-sm font-medium text-gray-300">
+                Zero-Knowledge Privacy Analysis
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleZKAnalysis}
+              disabled={!tokenAddress || analyzingZK}
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-800 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+            >
+              {analyzingZK ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Shield className="w-4 h-4" />
+                  Analyze Privacy
+                </>
+              )}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">
+            Analyze ZK verification contracts for cryptographic pairings, commitment tree integrity, and privacy risks.
+          </p>
+        </div>
+
+        {/* ZK Privacy Disclosure Component */}
+        {zkAnalysisResult && (
+          <ZKPrivacyDisclosure
+            contractId={tokenAddress}
+            zkAnalysisResult={zkAnalysisResult}
+            onRefresh={handleZKAnalysis}
+          />
+        )}
 
         <button
           type="submit"

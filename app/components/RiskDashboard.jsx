@@ -5,7 +5,9 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  Eye,
 } from "lucide-react";
+import ZKPrivacyDisclosure from "./ZKPrivacyDisclosure";
 
 function RiskDashboard({ analyzedTokens }) {
   const getRiskLevelColor = (level) => {
@@ -134,12 +136,12 @@ function RiskDashboard({ analyzedTokens }) {
 
               {token.reportHref ? (
                 <div className="mb-3">
-                  <Link
+                  <a
                     href={token.reportHref}
                     className="text-sm font-medium text-primary-300 transition-colors hover:text-primary-200"
                   >
                     Open public report
-                  </Link>
+                  </a>
                 </div>
               ) : null}
 
@@ -173,6 +175,16 @@ function RiskDashboard({ analyzedTokens }) {
                   </div>
                 </div>
               </div>
+
+              {/* ZK Privacy Risk Indicator */}
+              {token.hasZKPrivacy && (
+                <div className="mt-3 p-2 bg-primary-500/10 border border-primary-500/30 rounded-lg flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-primary-400" />
+                  <span className="text-xs text-primary-300">
+                    Zero-Knowledge Privacy Layer Detected
+                  </span>
+                </div>
+              )}
             </div>
           ))
         )}
