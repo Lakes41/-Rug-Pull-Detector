@@ -22,3 +22,4 @@ rayon = "1.8"
 anyhow = "1.0"
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "json"] }
 dotenvy = "0.15"
+hex = "0.4"
