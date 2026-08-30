@@ -185,13 +185,12 @@ class CircuitBreaker:
     
     def get_state(self) -> CircuitState:
         """Get current circuit state"""
-        async with self._lock:
-            # Auto-transition from open to half-open if timeout has passed
-            if self.state == CircuitState.OPEN:
-                if time.time() - self.last_state_change >= self.config.timeout:
-                    self._transition_to(CircuitState.HALF_OPEN)
-                    logger.info(f"Circuit breaker '{self.name}' transitioned to half-open")
-            return self.state
+        # Auto-transition from open to half-open if timeout has passed
+        if self.state == CircuitState.OPEN:
+            if time.time() - self.last_state_change >= self.config.timeout:
+                self._transition_to(CircuitState.HALF_OPEN)
+                logger.info(f"Circuit breaker '{self.name}' transitioned to half-open")
+        return self.state
     
     def get_stats(self) -> Dict:
         """Get circuit breaker statistics"""
@@ -211,11 +210,10 @@ class CircuitBreaker:
     
     def reset(self):
         """Reset the circuit breaker to closed state"""
-        async with self._lock:
-            self.state = CircuitState.CLOSED
-            self.stats = CircuitBreakerStats()
-            self.last_state_change = time.time()
-            logger.info(f"Circuit breaker '{self.name}' reset to closed state")
+        self.state = CircuitState.CLOSED
+        self.stats = CircuitBreakerStats()
+        self.last_state_change = time.time()
+        logger.info(f"Circuit breaker '{self.name}' reset to closed state")
 
 
 def circuit_breaker(

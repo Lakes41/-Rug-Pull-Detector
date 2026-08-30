@@ -1,5 +1,6 @@
 import { analyzeDynamicHoneypotSignals } from "./honeypotDetector";
 import { analyzeOracleManipulationRisk } from "./oracleManipulationDetector";
+import { analyzeL2RollupRisk } from "./l2RollupDetector";
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_BASE_URL || "http://127.0.0.1:8080";
@@ -42,15 +43,17 @@ export function normalizeAnalysisResult(payload, apiData) {
   const chainData = payload.normalized_chain_data || {};
   const detector = analyzeDynamicHoneypotSignals(chainData);
   const oracleManipulation = analyzeOracleManipulationRisk(chainData);
+  const l2Rollup = analyzeL2RollupRisk(chainData);
   const backendScore = typeof apiData?.score === "number" ? apiData.score : 0;
   const score = Math.max(
     backendScore,
     detector.score,
     oracleManipulation.score,
+    l2Rollup.score,
   );
   const backendRiskLevel = apiData?.riskLevel || apiData?.risk_level || null;
 
-  // Determine risk level incorporating oracle manipulation findings
+  // Determine risk level incorporating oracle manipulation and L2 findings
   let riskLevel;
   if (detector.flagged && score >= 0.8) {
     riskLevel = "Critical";
@@ -66,6 +69,10 @@ export function normalizeAnalysisResult(payload, apiData) {
     oracleManipulation.severity === "high"
   ) {
     riskLevel = "High";
+  } else if (l2Rollup.flagged && l2Rollup.finalityRiskRating === "critical") {
+    riskLevel = "Critical";
+  } else if (l2Rollup.flagged && l2Rollup.finalityRiskRating === "high") {
+    riskLevel = "High";
   } else {
     riskLevel = backendRiskLevel || "Low";
   }
@@ -76,6 +83,7 @@ export function normalizeAnalysisResult(payload, apiData) {
     chainId: payload.chain_id,
     detector,
     oracleManipulation,
+    l2Rollup,
     components: {
       creatorOwnership: apiData?.components?.creatorOwnership ?? 0,
       liquidityLock: apiData?.components?.liquidityLock ?? 0,
@@ -84,6 +92,7 @@ export function normalizeAnalysisResult(payload, apiData) {
       dynamicTax: detector.dynamicTax.flagged ? 1 : 0,
       conditionalReverts: detector.conditionalReverts.flagged ? 1 : 0,
       oracleManipulation: oracleManipulation.score,
+      l2Rollup: l2Rollup.score,
     },
     riskLevel,
     score,

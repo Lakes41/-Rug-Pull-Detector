@@ -305,7 +305,7 @@ class ValidatedScoringEngine:
             "validated_liquidity_events": validated_liquidity_events,
             "adjustment_ratio": adjustment_ratio,
             "is_liquidity_manipulated": adjustment_ratio < 0.8
-        )
+        }
 
 
 class EnhancedRiskAnalyzer:
