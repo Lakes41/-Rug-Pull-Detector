@@ -26,3 +26,9 @@ override.tf.json
 *_override.tf.json
 *.tfplan
 **/target/
+
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class

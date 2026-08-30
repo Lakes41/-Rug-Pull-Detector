@@ -7,6 +7,7 @@ import {
   Shield,
   XCircle,
 } from "lucide-react";
+import L2CentralizationDisclosure from "./L2CentralizationDisclosure";
 
 function getRiskLevelColor(level) {
   switch (level) {
@@ -389,6 +390,9 @@ export default function AnalysisReport({
                 </div>
               )}
           </section>
+
+          {/* Layer 2 Rollup Centralization Disclosure Section */}
+          <L2CentralizationDisclosure l2Analysis={analysis.l2Rollup || {}} />
         </section>
 
         <aside className="glass-card p-6">

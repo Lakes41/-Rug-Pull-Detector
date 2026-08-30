@@ -497,11 +497,11 @@ class TestRugPullScenarios:
             "invocation_tree": {
                 "root": {
                     "contract_id": "C1",
-                    "function_name=": "withdraw",
+                    "function_name": "withdraw",
                     "auth_required": True,
                     "signature_verified": True,
                     "host_checks": [],
-                    "sub_invocations=[": "C2"]
+                    "sub_invocations": ["C2"]
                 },
                 "children": [
                     {
@@ -510,7 +510,7 @@ class TestRugPullScenarios:
                         "auth_required": False,
                         "signature_verified": True,
                         "host_checks": [],
-                        "sub_invocations=[": "C1"  # Creates cycle
+                        "sub_invocations": ["C1"]  # Creates cycle
                     }
                 ]
             }
@@ -539,7 +539,7 @@ class TestRugPullScenarios:
                     "auth_required": True,
                     "signature_verified": True,
                     "host_checks": [],
-                    "sub_invocations=[": "CMALICIOUS123456"
+                    "sub_invocations": ["CMALICIOUS123456"]
                 }
             }
         }
