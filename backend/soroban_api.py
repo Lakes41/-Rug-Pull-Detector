@@ -8,10 +8,17 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 from soroban_auth_analyzer import SorobanAuthAnalyzer, AuthRiskType
 from soroban_integration import SorobanContractAnalyzer, SorobanRiskEvaluator
+from rate_limiter import RateLimiter, RateLimitMiddleware
 import asyncio
 
 
 app = FastAPI(title="Soroban Authorization Analysis API")
+
+# Initialize rate limiter: 10 requests per second, 100 burst capacity
+rate_limiter = RateLimiter(rate=10.0, capacity=100)
+
+# Add rate limiting middleware
+app.add_middleware(RateLimitMiddleware, rate_limiter=rate_limiter)
 
 
 class SorobanAuthRequest(BaseModel):

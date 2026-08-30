@@ -11,9 +11,17 @@ from proxy_pattern_analyzer import (
     ProxyRiskType,
     analyze_proxy_contract
 )
+from rate_limiter import RateLimiter, RateLimitMiddleware
+import asyncio
 
 
 app = FastAPI(title="Proxy Pattern Analysis API")
+
+# Initialize rate limiter: 10 requests per second, 100 burst capacity
+rate_limiter = RateLimiter(rate=10.0, capacity=100)
+
+# Add rate limiting middleware
+app.add_middleware(RateLimitMiddleware, rate_limiter=rate_limiter)
 
 
 class ProxyAnalysisRequest(BaseModel):
@@ -52,8 +60,8 @@ async def analyze_proxy_pattern(request: ProxyAnalysisRequest):
         # Create analyzer with provided RPC URL or default
         analyzer = ProxyPatternAnalyzer(rpc_url=request.rpcUrl)
         
-        # Analyze contract
-        analysis_result = analyzer.analyze_proxy_contract(request.contractAddress)
+        # Analyze contract (now async)
+        analysis_result = await analyzer.analyze_proxy_contract(request.contractAddress)
         
         return ProxyAnalysisResponse(
             contract_address=analysis_result["contract_address"],

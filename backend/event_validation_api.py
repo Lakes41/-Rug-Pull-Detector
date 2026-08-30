@@ -14,9 +14,16 @@ from event_validator import (
     EventType
 )
 from validated_scoring import EnhancedRiskAnalyzer
+from rate_limiter import RateLimiter, RateLimitMiddleware
 
 
 app = FastAPI(title="Event Validation API")
+
+# Initialize rate limiter: 10 requests per second, 100 burst capacity
+rate_limiter = RateLimiter(rate=10.0, capacity=100)
+
+# Add rate limiting middleware
+app.add_middleware(RateLimitMiddleware, rate_limiter=rate_limiter)
 
 
 class EventLogRequest(BaseModel):
